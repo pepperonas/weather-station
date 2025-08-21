@@ -1,20 +1,24 @@
-# Weather Station DHT22
+# Weather Station M5 Cardputer
 
-Eine Python-basierte Wetterstation für Raspberry Pi mit DHT22 Sensor, die Temperatur- und Luftfeuchtigkeitsdaten sammelt und an einen Server sendet.
+Eine Python-basierte Wetterstation für Raspberry Pi mit M5 Cardputer Sensoren, die Temperatur-, Luftfeuchtigkeits- und Luftdruckdaten sammelt und an einen Server sendet.
 
 ## Features
 
-- **DHT22 Sensor Support**: Liest Temperatur und Luftfeuchtigkeit
+- **M5 Cardputer Sensor Support**: SHT30 (Temperatur/Luftfeuchtigkeit) und QMP6988 (Luftdruck)
+- **I2C Kommunikation**: Direkte Sensoransteuerung über I2C Bus
 - **Automatisches Senden**: Kontinuierliche Datenübertragung an Remote-Server
 - **PM2 Process Management**: Zuverlässige Prozessverwaltung mit Autostart
 - **Konfigurierbar**: Umgebungsvariablen für einfache Anpassung
 - **Logging**: Strukturierte Logs für Monitoring
+- **Druck-Messung**: Zusätzliche Luftdruckdaten (optional)
 
 ## Hardware-Anforderungen
 
-- Raspberry Pi (alle Modelle)
-- DHT22 Temperatur-/Luftfeuchtigkeitssensor
-- Verbindungskabel (Standard GPIO Pin 18)
+- Raspberry Pi (alle Modelle mit I2C Support)
+- M5 Cardputer oder M5 Module mit folgenden Sensoren:
+  - **SHT30**: Temperatur- und Luftfeuchtigkeitssensor (I2C: 0x44)
+  - **QMP6988**: Luftdrucksensor (I2C: 0x70) - optional
+- I2C Verbindung (Standard GPIO Pins: SDA=2, SCL=3)
 
 ## Installation
 
@@ -28,31 +32,38 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Konfiguration anpassen
+### 2. I2C aktivieren
+
+```bash
+sudo raspi-config
+# Interface Options -> I2C -> Enable
+sudo reboot
+```
+
+### 3. Konfiguration anpassen
 
 Bearbeite die `.env` Datei oder nutze die Standard-Werte in `config.py`:
 
 ```bash
 # .env Datei
 WEATHER_SERVER_URL=https://mrx3k1.de/weather-tracker/weather-tracker
-WEATHER_GPIO_PIN=18
 WEATHER_REQUEST_TIMEOUT=10
 ```
 
-### 3. PM2 Installation (falls nicht vorhanden)
+### 4. PM2 Installation (falls nicht vorhanden)
 
 ```bash
 npm install -g pm2
 ```
 
-### 4. Anwendung starten
+### 5. Anwendung starten
 
 ```bash
 pm2 start ecosystem.config.js
 pm2 save
 ```
 
-### 5. Autostart einrichten
+### 6. Autostart einrichten
 
 Der PM2 Autostart ist bereits als systemd Service konfiguriert:
 
@@ -67,9 +78,16 @@ Die Anwendung startet automatisch nach jedem Reboot.
 
 ### Verfügbare Skripte
 
-- **`dht_22.py`**: Einfache Sensorabfrage mit Ausgabe
-- **`dht_22_sender.py`**: Einmalige Messung und Übertragung
-- **`continuous_sender.py`**: Kontinuierliche Überwachung (Standard für PM2)
+#### M5 Cardputer Sensoren:
+- **`m5_env_sender.py`**: Einmalige Messung von SHT30 + QMP6988 und Übertragung
+- **`m5_continuous_sender.py`**: Kontinuierliche Überwachung (Standard für PM2)
+- **`m5_sensor_sender.py`**: Alternative Sensor-Implementierung
+- **`m5_sensor_test.py`**: Test-Skript für Sensor-Diagnostik
+
+#### Legacy DHT22 Support:
+- **`dht_22.py`**: Einfache DHT22 Sensorabfrage mit Ausgabe
+- **`dht_22_sender.py`**: Einmalige DHT22 Messung und Übertragung
+- **`continuous_sender.py`**: Kontinuierliche DHT22 Überwachung
 
 ### PM2 Befehle
 
@@ -112,21 +130,38 @@ journalctl -u pm2-pi -f
 # Aktiviere Virtual Environment
 source venv/bin/activate
 
-# Einzelne Messung
-python dht_22_sender.py
+# M5 Cardputer Einzelmessung
+python m5_env_sender.py
 
-# Kontinuierliche Überwachung
-python continuous_sender.py
+# M5 Cardputer kontinuierlich
+python m5_continuous_sender.py
+
+# Sensor-Test
+python m5_sensor_test.py
 ```
+
+## Sensoren
+
+### SHT30 Temperatur/Luftfeuchtigkeitssensor
+- **I2C Adresse**: 0x44
+- **Messbereich Temperatur**: -40°C bis +125°C
+- **Messbereich Luftfeuchtigkeit**: 0% bis 100% RH
+- **Genauigkeit**: ±0.2°C / ±2% RH
+
+### QMP6988 Luftdrucksensor
+- **I2C Adresse**: 0x70
+- **Messbereich**: 300-1100 hPa
+- **Genauigkeit**: ±1 hPa (optional, falls verfügbar)
 
 ## Konfiguration
 
 ### config.py
 
 ```python
-# DHT22 Sensor Configuration
-SENSOR_TYPE = "DHT22"
-GPIO_PIN = 18
+# M5 Sensor Configuration
+SENSOR_TYPE = "M5_CARDPUTER"
+I2C_SHT30_ADDRESS = 0x44
+I2C_QMP6988_ADDRESS = 0x70
 
 # Server Configuration
 SERVER_URL = "https://mrx3k1.de/weather-tracker/weather-tracker"
@@ -142,7 +177,6 @@ CONTINUOUS_MODE_INTERVAL = 60.0  # seconds for continuous monitoring
 Die Anwendung unterstützt folgende Umgebungsvariablen:
 
 - `WEATHER_SERVER_URL`: URL des Zielservers
-- `WEATHER_GPIO_PIN`: GPIO-Pin für DHT22 Sensor
 - `WEATHER_REQUEST_TIMEOUT`: HTTP-Timeout in Sekunden
 
 ## Datenformat
@@ -153,8 +187,36 @@ Die Anwendung sendet JSON-Daten im folgenden Format:
 {
   "temperature": 23.5,
   "humidity": 65.2,
+  "pressure": 1013.25,
   "timestamp": 1642694400
 }
+```
+
+**Hinweis**: Das `pressure` Feld wird nur gesendet, wenn der QMP6988 Sensor verfügbar ist.
+
+## I2C Troubleshooting
+
+### I2C Geräte scannen
+```bash
+sudo i2cdetect -y 1
+```
+
+Erwartete Ausgabe:
+```
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:          -- -- -- -- -- -- -- -- -- -- -- -- -- 
+10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+20: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+40: -- -- -- -- 44 -- -- -- -- -- -- -- -- -- -- -- 
+50: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+60: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+70: 70 -- -- -- -- -- -- --
+```
+
+### I2C Berechtigungen
+```bash
+sudo usermod -a -G i2c pi
 ```
 
 ## Logs
@@ -169,23 +231,25 @@ Logs werden in folgende Dateien geschrieben:
 
 Die Anwendung behandelt folgende Fehlerszenarien:
 
-- **Sensor-Lesefehler**: Retry-Mechanismus mit Fehlermeldung
+- **I2C-Sensor-Fehler**: Retry-Mechanismus mit detaillierter Fehlermeldung
 - **Netzwerkfehler**: Timeout-Behandlung und Fehlerprotokollierung
 - **Server-Fehler**: HTTP-Statuscodes werden geloggt
+- **Sensor-Ausfall**: Graceful degradation (weiterarbeiten ohne defekte Sensoren)
 
 ## Systemanforderungen
 
 - Python 3.7+
 - Raspberry Pi OS (oder kompatible Linux-Distribution)
-- GPIO-Zugriff (User muss in `gpio` Gruppe sein)
+- I2C aktiviert (`sudo raspi-config`)
 - Internetverbindung für Datenübertragung
 - Node.js und npm für PM2
 
 ## Abhängigkeiten
 
-- `adafruit-circuitpython-dht`: Moderne DHT-Sensor-Bibliothek
+- `adafruit-circuitpython-busio`: I2C Kommunikation
+- `adafruit-blinka`: CircuitPython Kompatibilitätslayer
 - `requests`: HTTP-Client für Datenübertragung
-- `RPi.GPIO`: GPIO-Zugriff für Raspberry Pi
+- `RPi.GPIO`: GPIO-Zugriff für Raspberry Pi (Legacy DHT22 Support)
 
 ## Autostart-Architektur
 
@@ -199,6 +263,14 @@ Diese Architektur gewährleistet:
 - Prozess-Monitoring und automatische Wiederherstellung
 - Strukturierte Logs über systemd und PM2
 - Einfache Verwaltung über PM2 Befehle
+
+## Migration von DHT22
+
+Falls du von DHT22 auf M5 Cardputer migrierst:
+
+1. **Hardware ersetzen**: M5 Cardputer an I2C anschließen
+2. **PM2 Konfiguration ändern**: `ecosystem.config.js` auf M5-Skripte umstellen
+3. **Testen**: `python m5_env_sender.py` ausführen
 
 ## Autor
 
