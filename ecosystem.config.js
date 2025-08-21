@@ -1,0 +1,22 @@
+module.exports = {
+  apps: [{
+    name: 'weather-station',
+    script: './venv/bin/python',
+    args: 'm5_continuous_sender.py',
+    cwd: '/home/pi/apps/weather-station',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      WEATHER_SERVER_URL: 'https://mrx3k1.de/weather-tracker/weather-tracker',
+      WEATHER_GPIO_PIN: '18',
+      WEATHER_REQUEST_TIMEOUT: '10'
+    },
+    log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    error_file: './logs/weather-station-error.log',
+    out_file: './logs/weather-station-out.log',
+    log_file: './logs/weather-station-combined.log'
+  }]
+};

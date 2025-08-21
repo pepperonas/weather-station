@@ -1,0 +1,18 @@
+[Unit]
+Description=Weather Station DHT22 Sensor
+After=network.target
+
+[Service]
+Type=simple
+User=martin
+Group=martin
+WorkingDirectory=/home/martin/apps/weather-station
+Environment=PATH=/home/martin/apps/weather-station/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/martin/apps/weather-station/venv/bin/python /home/martin/apps/weather-station/continuous_sender.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
