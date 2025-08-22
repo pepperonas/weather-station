@@ -5,11 +5,12 @@ Eine Python-basierte Wetterstation für Raspberry Pi mit M5 Cardputer Sensoren, 
 ## Features
 
 - **M5 Cardputer Sensor Support**: SHT30 (Temperatur/Luftfeuchtigkeit) und QMP6988 (Luftdruck)
+- **Legacy DHT22 Support**: Abwärtskompatibilität mit DHT22 Sensoren
 - **I2C Kommunikation**: Direkte Sensoransteuerung über I2C Bus
 - **Automatisches Senden**: Kontinuierliche Datenübertragung an Remote-Server
 - **PM2 Process Management**: Zuverlässige Prozessverwaltung mit Autostart
 - **Konfigurierbar**: Umgebungsvariablen für einfache Anpassung
-- **Logging**: Strukturierte Logs für Monitoring
+- **Logging**: Strukturierte Logs für Monitoring mit automatischer Rotation
 - **Druck-Messung**: Zusätzliche Luftdruckdaten (optional)
 
 ## Hardware-Anforderungen
@@ -42,12 +43,13 @@ sudo reboot
 
 ### 3. Konfiguration anpassen
 
-Bearbeite die `.env` Datei oder nutze die Standard-Werte in `config.py`:
+Die Konfiguration erfolgt über Umgebungsvariablen oder Standard-Werte in `config.py`:
 
 ```bash
-# .env Datei
+# Umgebungsvariablen (werden von PM2 gesetzt)
 WEATHER_SERVER_URL=https://mrx3k1.de/weather-tracker/weather-tracker
 WEATHER_REQUEST_TIMEOUT=10
+WEATHER_GPIO_PIN=18  # Nur für Legacy DHT22
 ```
 
 ### 4. PM2 Installation (falls nicht vorhanden)
@@ -78,16 +80,23 @@ Die Anwendung startet automatisch nach jedem Reboot.
 
 ### Verfügbare Skripte
 
-#### M5 Cardputer Sensoren:
+#### M5 Cardputer Sensoren (Aktuell):
 - **`m5_env_sender.py`**: Einmalige Messung von SHT30 + QMP6988 und Übertragung
-- **`m5_continuous_sender.py`**: Kontinuierliche Überwachung (Standard für PM2)
+- **`m5_env_continuous_sender.py`**: Kontinuierliche Überwachung mit Druckmessung (Standard für PM2)
+- **`m5_continuous_sender.py`**: Kontinuierliche Überwachung ohne Druckmessung
 - **`m5_sensor_sender.py`**: Alternative Sensor-Implementierung
 - **`m5_sensor_test.py`**: Test-Skript für Sensor-Diagnostik
 
-#### Legacy DHT22 Support:
+#### Legacy DHT22 Support (Veraltet):
 - **`dht_22.py`**: Einfache DHT22 Sensorabfrage mit Ausgabe
 - **`dht_22_sender.py`**: Einmalige DHT22 Messung und Übertragung
 - **`continuous_sender.py`**: Kontinuierliche DHT22 Überwachung
+
+#### Test- und Debug-Skripte:
+- **`mock_sender.py`**: Generiert Testdaten für Entwicklung
+- **`m5_fixed_sender.py`**: Sendet feste Testwerte
+- **`pressure_test.py`**: QMP6988 Drucksensor-Tests
+- **`debug_pressure.py`**: Drucksensor-Debugging
 
 ### PM2 Befehle
 
@@ -133,11 +142,16 @@ source venv/bin/activate
 # M5 Cardputer Einzelmessung
 python m5_env_sender.py
 
-# M5 Cardputer kontinuierlich
+# M5 Cardputer kontinuierlich (mit Druckmessung)
+python m5_env_continuous_sender.py
+
+# M5 Cardputer kontinuierlich (ohne Druckmessung)
 python m5_continuous_sender.py
 
-# Sensor-Test
+# Sensor-Test und Debugging
 python m5_sensor_test.py
+python pressure_test.py
+python debug_pressure.py
 ```
 
 ## Sensoren
@@ -157,11 +171,12 @@ python m5_sensor_test.py
 
 ### config.py
 
+Die zentrale Konfigurationsdatei mit Standard-Werten:
+
 ```python
-# M5 Sensor Configuration
-SENSOR_TYPE = "M5_CARDPUTER"
-I2C_SHT30_ADDRESS = 0x44
-I2C_QMP6988_ADDRESS = 0x70
+# Sensor Configuration (Standard: DHT22, wird von PM2 überschrieben)
+SENSOR_TYPE = "DHT22"
+GPIO_PIN = 18
 
 # Server Configuration
 SERVER_URL = "https://mrx3k1.de/weather-tracker/weather-tracker"
@@ -171,6 +186,8 @@ REQUEST_TIMEOUT = 10
 SENSOR_READ_INTERVAL = 2.0  # seconds
 CONTINUOUS_MODE_INTERVAL = 60.0  # seconds for continuous monitoring
 ```
+
+**Hinweis**: PM2 verwendet `m5_env_continuous_sender.py` und überschreibt damit die DHT22-Standardeinstellung.
 
 ### Umgebungsvariablen
 
@@ -246,10 +263,14 @@ Die Anwendung behandelt folgende Fehlerszenarien:
 
 ## Abhängigkeiten
 
-- `adafruit-circuitpython-busio`: I2C Kommunikation
-- `adafruit-blinka`: CircuitPython Kompatibilitätslayer
-- `requests`: HTTP-Client für Datenübertragung
+Aus `requirements.txt`:
+- `adafruit-circuitpython-dht`: DHT Sensor-Unterstützung (inkludiert busio und blinka)
+- `requests==2.28.1`: HTTP-Client für Datenübertragung
 - `RPi.GPIO`: GPIO-Zugriff für Raspberry Pi (Legacy DHT22 Support)
+
+Zusätzlich durch adafruit-circuitpython-dht installiert:
+- `adafruit-blinka`: CircuitPython Kompatibilitätslayer
+- `busio`: I2C Bus-Kommunikation
 
 ## Autostart-Architektur
 
@@ -264,13 +285,26 @@ Diese Architektur gewährleistet:
 - Strukturierte Logs über systemd und PM2
 - Einfache Verwaltung über PM2 Befehle
 
-## Migration von DHT22
+## Migration zwischen Sensortypen
 
-Falls du von DHT22 auf M5 Cardputer migrierst:
+### Von DHT22 zu M5 Cardputer:
 
-1. **Hardware ersetzen**: M5 Cardputer an I2C anschließen
-2. **PM2 Konfiguration ändern**: `ecosystem.config.js` auf M5-Skripte umstellen
-3. **Testen**: `python m5_env_sender.py` ausführen
+1. **Hardware anschließen**: M5 Module an I2C anschließen (SDA=GPIO2, SCL=GPIO3)
+2. **I2C aktivieren**: `sudo raspi-config` → Interface Options → I2C → Enable
+3. **Sensoren verifizieren**: `sudo i2cdetect -y 1` (sollte 0x44 und 0x70 zeigen)
+4. **PM2 aktualisieren**: Bereits auf M5 konfiguriert in `ecosystem.config.js`
+5. **Testen**: `python m5_env_sender.py`
+
+### Von M5 zu DHT22:
+
+1. **Hardware anschließen**: DHT22 an GPIO18
+2. **PM2 Konfiguration ändern**: 
+   ```bash
+   pm2 delete weather-station
+   # Bearbeite ecosystem.config.js: args von 'm5_env_continuous_sender.py' zu 'continuous_sender.py'
+   pm2 start ecosystem.config.js
+   ```
+3. **Testen**: `python dht_22_sender.py`
 
 ## Autor
 
