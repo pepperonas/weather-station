@@ -181,14 +181,22 @@ pm2 show weather-station
 pm2 logs weather-station --err --lines 50
 ```
 
-## Datei-Übersicht
+## Projektstruktur
 
-- `env3_dht22_combined.py` - Hauptscript (Indoor + Outdoor)
-- `ecosystem.config.js` - PM2 Konfiguration
-- `requirements.txt` - Python Abhängigkeiten
-- `config.py` - Legacy Konfiguration
-- `dht_22.py` - Standalone DHT22 Test
-- `env3_final.py` - Legacy ENV III Script
+```
+weather-station/
+├── env3_dht22_combined.py    # Hauptscript (Indoor + Outdoor)
+├── ecosystem.config.js       # PM2 Konfiguration  
+├── requirements.txt          # Python Abhängigkeiten
+├── config.py                 # Legacy Konfiguration
+├── dht_22.py                 # Standalone DHT22 Test
+├── env3_final.py             # Legacy ENV III Script (Backup)
+├── weather-station.service   # Systemd Service (optional)
+├── README.md                 # Diese Dokumentation
+├── logs/                     # PM2 Log-Dateien
+├── venv/                     # Python Virtual Environment
+└── archive/                  # Archivierte Entwicklungsdateien
+```
 
 ## Backup
 
@@ -210,9 +218,19 @@ tar -czf weather-station-backup-$(date +%Y%m%d-%H%M%S).tar.gz .
 - Ausreichend Luftzirkulation um Sensor
 - Nicht direkt neben Wärmequellen platzieren
 
+## Archivierte Dateien
+
+Entwicklungs- und Testdateien wurden in `archive/` verschoben:
+- Verschiedene ENV III Implementierungsversuche
+- M5 Sensor Tests und Mock-Daten
+- Debug- und Drucktest-Scripts
+
+Diese können bei Bedarf für Referenzzwecke verwendet werden.
+
 ## Support
 
 Bei Problemen:
 1. Logs prüfen: `pm2 logs weather-station`
 2. Hardware-Verbindungen kontrollieren
 3. Sensor-Tests einzeln durchführen
+4. Archive-Dateien für alternative Implementierungen prüfen
