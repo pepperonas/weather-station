@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: 'weather-station',
-    script: '/home/pi/apps/weather-station/env3_final.py',
+    script: '/home/pi/apps/weather-station/env3_dht22_combined.py',
     interpreter: '/home/pi/apps/weather-station/venv/bin/python',
     cwd: '/home/pi/apps/weather-station',
     instances: 1,
