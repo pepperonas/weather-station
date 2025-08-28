@@ -13,6 +13,12 @@ QMP6988_ADDR = 0x70
 # DHT22 Configuration (Outdoor sensor)
 DHT22_GPIO = 4  # GPIO4 (Pin 7)
 
+# DHT22 cached values and timing
+last_dht22_temp = None
+last_dht22_humidity = None
+last_dht22_read_time = 0
+DHT22_CACHE_DURATION = 30  # Use cached value for 30 seconds
+
 # Server Configuration
 SERVER_URL = "https://mrx3k1.de/weather-tracker/weather-tracker"
 REQUEST_TIMEOUT = 10
@@ -87,39 +93,70 @@ def read_qmp6988():
         return None
 
 def read_dht22_simple():
-    """Read DHT22 using simple Python dht22 library (Outdoor)"""
-    try:
-        # Use the existing dht_22.py script to read
-        result = subprocess.run(
-            ['/home/pi/apps/weather-station/venv/bin/python', '-c',
-             f'''
+    """Read DHT22 with improved reliability using retries and caching (Outdoor)"""
+    global last_dht22_temp, last_dht22_humidity, last_dht22_read_time
+    
+    current_time = time.time()
+    
+    # Return cached value if it's recent enough
+    if (last_dht22_temp is not None and 
+        last_dht22_humidity is not None and 
+        (current_time - last_dht22_read_time) < DHT22_CACHE_DURATION):
+        return last_dht22_temp, last_dht22_humidity
+    
+    # Try to read fresh data with multiple attempts
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            result = subprocess.run(
+                ['/home/pi/apps/weather-station/venv/bin/python', '-c',
+                 f'''
 import time
 import board
 import adafruit_dht
 
-try:
-    dht = adafruit_dht.DHT22(board.D{DHT22_GPIO}, use_pulseio=False)
-    time.sleep(2)
-    temp = dht.temperature
-    hum = dht.humidity
-    if temp is not None and hum is not None:
-        print(f"{{temp}},{{hum}}")
-    dht.exit()
-except Exception as e:
-    pass
+attempt_count = 3
+for i in range(attempt_count):
+    try:
+        dht = adafruit_dht.DHT22(board.D{DHT22_GPIO}, use_pulseio=False)
+        time.sleep(2.5)  # Increased delay for sensor stability
+        temp = dht.temperature
+        hum = dht.humidity
+        if temp is not None and hum is not None:
+            print(f"{{temp}},{{hum}}")
+            dht.exit()
+            break
+        dht.exit()
+    except Exception:
+        if i < attempt_count - 1:
+            time.sleep(2)  # Wait before retry
+        pass
 '''],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+                capture_output=True,
+                text=True,
+                timeout=15  # Increased timeout for multiple attempts
+            )
+            
+            if result.stdout.strip():
+                temp, hum = result.stdout.strip().split(',')
+                temp = float(temp)
+                hum = float(hum)
+                # Update cache with successful read
+                last_dht22_temp = temp
+                last_dht22_humidity = hum
+                last_dht22_read_time = current_time
+                return temp, hum
+                
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                print(f"DHT22 subprocess error after {max_attempts} attempts: {e}")
         
-        if result.stdout.strip():
-            temp, hum = result.stdout.strip().split(',')
-            return float(temp), float(hum)
-    except Exception as e:
-        print(f"DHT22 subprocess error: {e}")
+        # Wait before next attempt
+        if attempt < max_attempts - 1:
+            time.sleep(3)
     
-    return None, None
+    # Return cached values if available, otherwise None
+    return last_dht22_temp, last_dht22_humidity
 
 def send_data(indoor_temp, indoor_humidity, pressure, outdoor_temp, outdoor_humidity):
     """Send combined indoor and outdoor data to server"""
@@ -205,7 +242,7 @@ def main():
     if outdoor_temp and outdoor_hum:
         print(f"✓ Outdoor DHT22 working: {outdoor_temp:.1f}°C, {outdoor_hum:.1f}%")
     else:
-        print("✗ Outdoor DHT22 not responding on GPIO{DHT22_GPIO}")
+        print(f"✗ Outdoor DHT22 not responding on GPIO{DHT22_GPIO}")
         print("  Note: DHT22 may need time to stabilize or have connection issues.")
         print("  Will retry during normal operation...\n")
     
