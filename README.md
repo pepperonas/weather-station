@@ -6,7 +6,8 @@ Eine Python-basierte Wetterstation für Raspberry Pi mit kombinierter Indoor/Out
 
 **Produktive Version:** `env3_dht22_combined.py` läuft über PM2  
 **Letzte Messwerte:**
-- Indoor (ENV III): 22.3°C, 62.4% Luftfeuchtigkeit, 1013.2hPa ✅
+- Indoor (ENV III): 20.5°C, 79.9% Luftfeuchtigkeit, 1013.2hPa ✅
+- Outdoor (DHT22): 27.5°C, 63.3% Luftfeuchtigkeit ✅
 - Datenübertragung: ✓ Data sent successfully ✅
 - PM2 Service: Online und stabil ✅
 
@@ -14,7 +15,7 @@ Eine Python-basierte Wetterstation für Raspberry Pi mit kombinierter Indoor/Out
 
 - **Dual-Sensor Setup**: 
   - Indoor: M5 ENV III Module (SHT30 + QMP6988) - **Funktioniert** ✅
-  - Outdoor: DHT22 Sensor für Außentemperaturen - **Implementiert** ⚙️
+  - Outdoor: DHT22 Sensor für Außentemperaturen - **Funktioniert** ✅
 - **I2C + GPIO Kommunikation**: Direkte Sensoransteuerung 
 - **Automatisches Senden**: Kontinuierliche Datenübertragung mit Indoor/Outdoor Kennzeichnung
 - **PM2 Process Management**: Zuverlässige Prozessverwaltung mit Autostart
@@ -29,23 +30,26 @@ Eine Python-basierte Wetterstation für Raspberry Pi mit kombinierter Indoor/Out
 - **QMP6988**: Luftdrucksensor (I2C: 0x70)
 - **Anschluss**: I2C Bus 1 (GPIO2=SDA, GPIO3=SCL)
 
-### Outdoor Sensor (DHT22) ⚙️ Konfiguriert
+### Outdoor Sensor (DHT22) ✅ Funktioniert
 - **DHT22**: Temperatur- und Luftfeuchtigkeitssensor für Außenbereich
 - **Anschluss**: GPIO4 (Pin 7)
 - **Stromversorgung**: 3.3V
-- **Status**: Hardware-Tests erfolgreich, Integration in Hauptscript abgeschlossen
+- **Status**: Voll funktionsfähig und sendet Daten
 
 ## Installation
 
 ### 1. Repository klonen und Abhängigkeiten installieren
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/pepperonas/weather-station.git
 cd weather-station
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install smbus2 adafruit-blinka==8.64.0 adafruit-circuitpython-dht==4.0.9
 ```
+
+**WICHTIG**: Verwende genau Blinka Version 8.64.0 - neuere Versionen verursachen Konflikte!
 
 ### 2. Hardware-Interfaces aktivieren
 
@@ -55,20 +59,30 @@ sudo raspi-config
 sudo reboot
 ```
 
-### 3. Sensoren verkabeln
+### 3. Boot-Konfiguration für DHT22
+
+Füge folgende Zeile zu `/boot/firmware/config.txt` hinzu:
+```
+dtoverlay=dht22,gpiopin=4
+```
+
+### 4. Sensoren verkabeln
 
 #### M5 ENV III (Indoor):
-- VCC → 3.3V
-- GND → GND  
-- SDA → GPIO2 (Pin 3)
-- SCL → GPIO3 (Pin 5)
+- VCC → Pin 1 (3.3V)
+- GND → Pin 9 (GND)  
+- SDA → Pin 3 (GPIO2)
+- SCL → Pin 5 (GPIO3)
 
 #### DHT22 (Outdoor):
-- VCC → 3.3V
-- GND → GND
-- DATA → GPIO4 (Pin 7)
+```
+DHT22 Pin 1 (VCC) → Raspberry Pi Pin 1 (3.3V)
+DHT22 Pin 2 (DATA) → Raspberry Pi Pin 7 (GPIO4)
+DHT22 Pin 3 (NC) → Nicht verbinden
+DHT22 Pin 4 (GND) → Raspberry Pi Pin 9 (GND)
+```
 
-### 4. PM2 Service einrichten
+### 5. PM2 Service einrichten
 
 ```bash
 # PM2 installieren (falls nicht vorhanden)
@@ -85,7 +99,7 @@ pm2 save
 ## Konfiguration
 
 ### Server-Konfiguration
-Server URL in env3_dht22_combined.py anpassen:
+Server URL in `env3_dht22_combined.py` anpassen:
 
 ```python
 SERVER_URL = "https://your-server.com/weather-endpoint"
@@ -104,17 +118,15 @@ Das Script sendet folgende JSON-Struktur an den Server:
 
 ```json
 {
-  "timestamp": 1756312620,
-  "temperature": 22.3,           // Primary (Indoor für Kompatibilität)
-  "humidity": 62.4,              // Primary (Indoor für Kompatibilität)
-  "temperature_indoor": 22.3,    // ENV III Indoor
-  "humidity_indoor": 62.4,       // ENV III Indoor  
-  "temperature_outdoor": 21.9,   // DHT22 Outdoor (wenn verfügbar)
-  "humidity_outdoor": 33.2,      // DHT22 Outdoor (wenn verfügbar)
-  "pressure": 1013.2,           // Indoor Luftdruck
-  "pressure_indoor": 1013.2,    // Indoor Luftdruck
-  "sensor_indoor": "ENV3",
-  "sensor_outdoor": "DHT22"
+  "indoor": {
+    "temperature": 20.5,
+    "humidity": 79.9,
+    "pressure": 1013.2
+  },
+  "outdoor": {
+    "temperature": 27.5,
+    "humidity": 63.3
+  }
 }
 ```
 
@@ -122,8 +134,8 @@ Das Script sendet folgende JSON-Struktur an den Server:
 
 ### Manueller Start
 ```bash
-source venv/bin/activate
-python env3_dht22_combined.py
+cd /home/pi/apps/weather-station
+/home/pi/apps/weather-station/venv/bin/python env3_dht22_combined.py
 ```
 
 ### PM2 Management
@@ -145,48 +157,55 @@ pm2 stop weather-station
 
 ### Aktuelle Live-Ausgabe
 ```
-Indoor(ENV3): 22.3°C, 62.4% | Pressure: 1013.2hPa
+Indoor(ENV3): 20.5°C, 79.9% | Pressure: 1013.2hPa | Outdoor(DHT22): 27.5°C, 63.3%
 ✓ Data sent successfully
 ```
 
-### DHT22 Einzeltest
+### Sensor Tests
+
+#### ENV III Test
 ```bash
-# DHT22 manuell testen
-python -c "
-import board
-import adafruit_dht
+python3 -c "
+import smbus2, time
+bus = smbus2.SMBus(1)
+msg = smbus2.i2c_msg.write(0x44, [0x2C, 0x06])
+bus.i2c_rdwr(msg)
+time.sleep(0.02)
+msg = smbus2.i2c_msg.read(0x44, 6)
+bus.i2c_rdwr(msg)
+data = list(msg)
+temp = -45 + 175 * ((data[0] << 8) | data[1]) / 65535.0
+hum = 100 * ((data[3] << 8) | data[4]) / 65535.0
+print(f'ENV III: {temp:.1f}°C, {hum:.1f}%')
+"
+```
+
+#### DHT22 Test
+```bash
+/home/pi/apps/weather-station/venv/bin/python -c "
+import board, adafruit_dht, time
 dht = adafruit_dht.DHT22(board.D4, use_pulseio=False)
-print(fTemp: {dht.temperature}°C, Humidity: {dht.humidity}%)
+time.sleep(2)
+print(f'DHT22: {dht.temperature:.1f}°C, {dht.humidity:.1f}%')
 dht.exit()
 "
 ```
 
 ## Troubleshooting
 
-### DHT22 Integration
-Falls DHT22 nicht in den Logs erscheint:
+### DHT22 "Sensor not found"
+1. **Verkabelung prüfen**: Alle 4 Pins korrekt verbunden?
+2. **Boot-Config prüfen**: `dtoverlay=dht22,gpiopin=4` in `/boot/firmware/config.txt`?
+3. **Virtual Environment nutzen**: Immer venv Python verwenden, nicht System-Python!
+4. **Neustart**: Nach Config-Änderungen `sudo reboot`
 
-```bash
-# 1. DHT22 einzeln testen
-cd /home/pi/apps/weather-station
-source venv/bin/activate
-python archive/test_dht22_gpio4.py
-
-# 2. GPIO-Konflikte prüfen
-sudo fuser /dev/gpiochip0
-
-# 3. PM2 Service neu starten
-pm2 restart weather-station
-```
-
-### I2C Probleme
+### ENV III Probleme
 ```bash
 # I2C Geräte scannen
 sudo i2cdetect -y 1
-
 # Erwartete Adressen:
-# 0x44 = SHT30 (Temp/Humidity) ✅
-# 0x70 = QMP6988 (Pressure) ✅
+# 0x44 = SHT30 (Temp/Humidity)
+# 0x70 = QMP6988 (Pressure)
 ```
 
 ### Service Probleme
@@ -196,6 +215,18 @@ pm2 show weather-station
 
 # Fehler-Logs
 pm2 logs weather-station --err --lines 50
+
+# PM2 neu starten
+pm2 kill && pm2 resurrect
+```
+
+### Library-Konflikte
+```bash
+# System-Libraries entfernen (falls Konflikte)
+sudo pip3 uninstall adafruit-blinka adafruit-circuitpython-dht --break-system-packages
+
+# Nur venv verwenden
+/home/pi/apps/weather-station/venv/bin/pip list | grep -i adafruit
 ```
 
 ## Projektstruktur
@@ -205,17 +236,11 @@ weather-station/
 ├── env3_dht22_combined.py    # ✅ Hauptscript (Indoor + Outdoor)
 ├── ecosystem.config.js       # ✅ PM2 Konfiguration  
 ├── requirements.txt          # Python Abhängigkeiten
-├── config.py                 # Legacy Konfiguration
-├── dht_22.py                 # Standalone DHT22 Test
-├── env3_final.py             # Legacy ENV III Script (Backup)
-├── weather-station.service   # Systemd Service (optional)
+├── CLAUDE.md                 # Dokumentation für Claude AI
 ├── README.md                 # Diese Dokumentation
 ├── logs/                     # PM2 Log-Dateien
-├── venv/                     # Python Virtual Environment
+├── venv/                     # Python Virtual Environment (kritisch!)
 └── archive/                  # Archivierte Entwicklungsdateien
-    ├── test_dht22_gpio4.py   # ✅ Erfolgreiche DHT22 Tests
-    ├── env3_indoor_working.py # ✅ ENV III Arbeitsversion
-    └── [weitere Test-Dateien]
 ```
 
 ## Entwicklungsverlauf
@@ -225,45 +250,43 @@ weather-station/
 - I2C Kommunikation etabliert
 - Kontinuierliche Datenübertragung
 
-### Phase 2: DHT22 Integration ⚙️
-- DHT22 Hardware-Tests erfolgreich
-- GPIO4 Konfiguration abgeschlossen  
-- Kombiniertes Script erstellt
-- **Status**: Technisch funktionsfähig, finale Integration in Arbeit
+### Phase 2: DHT22 Integration ✅
+- DHT22 Hardware erfolgreich angeschlossen
+- GPIO4 Konfiguration mit Device Tree Overlay
+- Kombiniertes Script mit Subprocess-Methode
+- **Status**: Voll funktionsfähig
 
 ### Phase 3: Projektorganisation ✅
-- 27+ Entwicklungsdateien archiviert
 - Saubere Projektstruktur etabliert
+- PM2 Process Management
 - Vollständige Dokumentation
+- GitHub Repository gepflegt
+
+## Wichtige Hinweise
+
+### Virtual Environment ist kritisch!
+Das System funktioniert NUR mit dem Virtual Environment unter `/home/pi/apps/weather-station/venv/`. System-Python wird NICHT funktionieren!
+
+### Device Tree Overlay
+Die Zeile `dtoverlay=dht22,gpiopin=4` in `/boot/firmware/config.txt` ist ESSENTIELL für DHT22. Nicht entfernen!
+
+### Library-Versionen
+- Blinka: 8.64.0 (NICHT upgraden auf 8.65.0!)
+- adafruit-circuitpython-dht: 4.0.9
 
 ## Backup
 
 Vor größeren Änderungen:
-
 ```bash
 tar -czf weather-station-backup-$(date +%Y%m%d-%H%M%S).tar.gz .
 ```
 
-## Hardware-Tipps
+## System-Status: ✅ VOLL FUNKTIONSFÄHIG
 
-### DHT22 Installation
-- Wetterfesten Gehäuse für Außensensor verwenden
-- Kurze Kabelwege für stabilere Verbindung
-- 10kΩ Pull-up Resistor zwischen DATA und VCC (empfohlen)
+Das System läuft stabil mit:
+- ENV III Indoor-Sensoren (Temperatur, Luftfeuchtigkeit, Luftdruck)
+- DHT22 Outdoor-Sensor (Temperatur, Luftfeuchtigkeit)
+- Kontinuierliche Datenübertragung an Server
+- PM2 Process Management mit Auto-Restart
 
-### ENV III Installation  
-- Innenraum-Montage für präzise Messungen
-- Ausreichend Luftzirkulation um Sensor
-- Nicht direkt neben Wärmequellen platzieren
-
-## Support
-
-Bei Problemen:
-1. **Logs prüfen:** `pm2 logs weather-station`
-2. **Hardware-Verbindungen kontrollieren**
-3. **Sensor-Tests einzeln durchführen** (siehe archive/ für Test-Scripts)
-4. **PM2 Service neu starten:** `pm2 restart weather-station`
-
-## System-Status: ✅ PRODUKTIV
-
-Das System läuft stabil mit ENV III Indoor-Sensoren und sendet erfolgreich Daten an den Server. DHT22 Outdoor-Integration ist vorbereitet und getestet.
+Letzte erfolgreiche Messung: 28.08.2025 04:16 Uhr

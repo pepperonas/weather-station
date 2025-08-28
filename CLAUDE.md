@@ -2,185 +2,167 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Project Context
 
-This is a Python-based weather station for Raspberry Pi that collects temperature, humidity, and pressure data from sensors and sends it to a remote server. The project supports two sensor architectures:
+This is a Raspberry Pi weather station running on `192.168.2.134` that collects sensor data and sends it to `https://mrx3k1.de/weather-tracker/weather-tracker`. The system runs continuously via PM2 process manager.
 
-1. **M5 Cardputer Sensors** (current/preferred): SHT30 (temperature/humidity) + QMP6988 (pressure) via I2C
-2. **Legacy DHT22** (deprecated): Single sensor via GPIO
+## Current Production Setup
 
-## Architecture
+**Active Script**: `env3_dht22_combined.py` running via PM2  
+**Sensors**:
+- **Indoor**: M5 ENV III Module (I2C) - SHT30 (0x44) + QMP6988 (0x70)
+- **Outdoor**: DHT22 on GPIO4 (Pin 7)
+**Virtual Environment**: `/home/pi/apps/weather-station/venv/`
 
-### Sensor Implementation Layers
-- **Raw I2C Communication**: Direct sensor communication using `adafruit-blinka` and `busio`
-- **Sensor Reading Functions**: Hardware-specific functions (`read_sht30_raw()`, `read_qmp6988_raw()`)
-- **Data Transmission**: HTTP POST to remote API endpoint with JSON payload
-- **Process Management**: PM2 for continuous operation with auto-restart
+## Essential Commands
 
-### Key Components
-- `config.py`: Centralized configuration with environment variable overrides (Note: defaults to DHT22 but overridden by PM2)
-- `ecosystem.config.js`: PM2 process configuration
-- `m5_env_continuous_sender.py`: Main production script for M5 sensors
-- `weather-station.service`: Legacy systemd service (not actively used)
-
-## Common Development Commands
-
-### Environment Setup
+### SSH Access & Navigation
 ```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Enable I2C (required for M5 sensors)
-sudo raspi-config  # Interface Options -> I2C -> Enable
+ssh pi@192.168.2.134
+cd apps/weather-station
 ```
 
-### Process Management
+### Service Management
 ```bash
-# Start weather station
-pm2 start ecosystem.config.js
-pm2 save
-
-# Monitor status and logs
-pm2 status
-pm2 logs weather-station
+# Check status
+pm2 status weather-station
 pm2 logs weather-station --lines 20
 
-# Restart/stop
+# Restart service (after code changes)
 pm2 restart weather-station
-pm2 stop weather-station
 
-# Configuration changes require delete/recreate
-pm2 delete weather-station
+# Stop/Start service
+pm2 stop weather-station
 pm2 start ecosystem.config.js
 ```
 
-### Testing and Diagnostics
+### Testing & Diagnostics
 ```bash
-# Test M5 sensors (single reading)
-python m5_env_sender.py
+# Test sensors with virtual environment
+/home/pi/apps/weather-station/venv/bin/python -c "
+import board, adafruit_dht
+dht = adafruit_dht.DHT22(board.D4, use_pulseio=False)
+print(f'DHT22: {dht.temperature}°C, {dht.humidity}%')
+dht.exit()
+"
 
-# Test continuous monitoring (Ctrl+C to stop)
-python m5_env_continuous_sender.py
-
-# Sensor diagnostics
-python m5_sensor_test.py
-
-# Pressure sensor testing
-python pressure_test.py
-python debug_pressure.py
-
-# Scan I2C devices
+# Check I2C devices (should show 0x44 and 0x70)
 sudo i2cdetect -y 1
-# Expected: 0x44 (SHT30), 0x70 (QMP6988)
 
-# Check systemd PM2 service
-sudo systemctl status pm2-pi
-journalctl -u pm2-pi -f
+# Monitor real-time output
+tail -f logs/weather-station-out-*.log
 ```
 
-## Script Categories
+### Git Operations
+```bash
+# Check status and commit changes
+git status
+git add .
+git commit -m "message"
+git push origin main
+```
 
-### M5 Cardputer Scripts (Current)
-- `m5_env_sender.py`: Single measurement with pressure support
-- `m5_env_continuous_sender.py`: Production continuous monitoring (used by PM2)
-- `m5_continuous_sender.py`: Continuous monitoring without pressure
-- `m5_sensor_sender.py`: Alternative sensor implementation
-- `m5_sensor_test.py`: Diagnostics and testing
+## Architecture & Data Flow
 
-### Legacy DHT22 Scripts (Deprecated)
-- `dht_22_sender.py`: Single measurement
-- `continuous_sender.py`: Continuous monitoring
-- `dht_22.py`: Basic sensor reading
+### Sensor Reading Flow
+1. **ENV III (Indoor)**:
+   - SHT30 → I2C → `read_sht30()` → Temperature/Humidity
+   - QMP6988 → I2C → `read_qmp6988()` → Pressure
+   
+2. **DHT22 (Outdoor)**:
+   - GPIO4 → `read_dht22_simple()` → Temperature/Humidity via subprocess with venv Python
 
-### Development/Testing Scripts
-- `mock_sender.py`: Generates fake data for testing
-- `m5_fixed_sender.py`: Fixed test data
-- `pressure_test.py`: QMP6988 pressure sensor testing
-- `debug_pressure.py`: Pressure sensor debugging
+3. **Data Transmission**:
+   - Collect readings → Format JSON → POST to server → 60-second interval
 
-## Data Format
-
+### JSON Payload Structure
 ```json
 {
-  "temperature": 23.5,
-  "humidity": 65.2,
-  "pressure": 1013.25,
-  "timestamp": 1642694400
+  "indoor": {
+    "temperature": 20.5,
+    "humidity": 66.1,
+    "pressure": 1013.2
+  },
+  "outdoor": {
+    "temperature": 27.5,
+    "humidity": 63.3
+  }
 }
 ```
 
-The `pressure` field is optional and only included when QMP6988 sensor is available.
+## Critical Configuration
 
-## Configuration Management
-
-### Primary Configuration (`config.py`)
-- Default sensor type: DHT22 (legacy)
-- GPIO pin for DHT22: 18
-- Server URL and timeout settings
-- Environment variable overrides for all settings
+### Boot Configuration (`/boot/firmware/config.txt`)
+```
+dtparam=i2c_arm=on,i2c_arm_baudrate=10000
+dtoverlay=dht22,gpiopin=4
+```
+**WARNING**: Removing `dtoverlay=dht22,gpiopin=4` breaks DHT22 functionality
 
 ### PM2 Configuration (`ecosystem.config.js`)
-- Script: `m5_env_continuous_sender.py` (overrides config.py default)
-- Process settings and auto-restart
-- Environment variables for production
-- Log file locations
+- Uses venv interpreter: `/home/pi/apps/weather-station/venv/bin/python`
+- Script: `env3_dht22_combined.py`
+- Auto-restart enabled
+- Logs in `./logs/` directory
 
-### Environment Variables
-- `WEATHER_SERVER_URL`: API endpoint (default: https://mrx3k1.de/weather-tracker/weather-tracker)
-- `WEATHER_GPIO_PIN`: DHT22 GPIO pin (legacy)
-- `WEATHER_REQUEST_TIMEOUT`: HTTP timeout (default: 10)
+## Library Dependencies
 
-## Switching Between Sensor Types
+### Virtual Environment (`venv/`)
+- `adafruit-circuitpython-dht==4.0.9`
+- `Adafruit-Blinka==8.64.0` (DO NOT upgrade to 8.65.0 - causes conflicts)
+- `smbus2` for I2C communication
+- `requests==2.28.1` for HTTP
 
-To change from DHT22 to M5 sensors or vice versa:
+### System Requirements
+- I2C enabled via `raspi-config`
+- User in `i2c` and `gpio` groups
+- Python 3.11
 
-1. Update `ecosystem.config.js` args field with appropriate script
-2. Delete and recreate PM2 process: `pm2 delete weather-station && pm2 start ecosystem.config.js`
-3. Verify with `pm2 logs weather-station`
+## Common Issues & Solutions
 
-## Log Management
+### DHT22 "Sensor not found"
+1. Check wiring: Pin 1 (VCC) → 3.3V, Pin 2 (DATA) → GPIO4 (Pin 7), Pin 4 (GND) → Ground
+2. Verify device tree overlay exists in `/boot/firmware/config.txt`
+3. Test with venv Python (not system Python)
 
-Logs are written to:
-- `logs/weather-station-out.log`: Standard output
-- `logs/weather-station-error.log`: Error output  
-- `logs/weather-station-combined.log`: Combined logs
+### ENV III Not Responding
+1. Check I2C: `sudo i2cdetect -y 1` (should show 0x44, 0x70)
+2. Verify I2C enabled in boot config
+3. Check physical connections: SDA→GPIO2, SCL→GPIO3
 
-PM2 automatically rotates logs and provides structured logging.
+### Rate Limiting (HTTP 429)
+- Server allows one reading per minute
+- Normal behavior, will retry automatically
 
-## I2C Sensor Addresses
+## Project Structure
 
-- **SHT30** (Temperature/Humidity): `0x44`
-- **QMP6988** (Pressure): `0x70`
+```
+weather-station/
+├── env3_dht22_combined.py    # Main production script
+├── ecosystem.config.js        # PM2 configuration
+├── venv/                      # Virtual environment (critical)
+├── logs/                      # Runtime logs
+├── archive/                   # Old test files
+└── .git/                      # Git repository
+```
 
-Always verify sensor detection with `sudo i2cdetect -y 1` before troubleshooting code issues.
+## Development Workflow
 
-## Dependencies
+1. Always use SSH to `pi@192.168.2.134`
+2. Navigate to `/home/pi/apps/weather-station`
+3. Make changes to scripts
+4. Test with venv Python before deploying
+5. Restart PM2 service after changes
+6. Monitor logs for errors
+7. Commit to Git when stable
 
-From `requirements.txt`:
-- `adafruit-circuitpython-dht`: DHT sensor support
-- `requests==2.28.1`: HTTP client for API communication
-- `RPi.GPIO`: GPIO access for Raspberry Pi
+## Hardware Pins Reference
 
-Additional dependencies used by M5 scripts (installed via adafruit-circuitpython-dht):
-- `adafruit-blinka`: CircuitPython compatibility layer
-- `busio`: I2C bus communication
+**Raspberry Pi GPIO Usage**:
+- Pin 1: 3.3V (Power for sensors)
+- Pin 3: GPIO2/SDA (I2C Data)
+- Pin 5: GPIO3/SCL (I2C Clock)
+- Pin 7: GPIO4 (DHT22 Data)
+- Pin 9: Ground
 
-## Troubleshooting
-
-### I2C Issues
-- Verify I2C is enabled: `sudo raspi-config`
-- Check sensor detection: `sudo i2cdetect -y 1`
-- Ensure user has I2C permissions: `sudo usermod -a -G i2c pi`
-
-### Sensor Reading Issues
-- Use `m5_sensor_test.py` for diagnostics
-- Check pressure with `pressure_test.py` or `debug_pressure.py`
-- Verify wiring and power supply
-
-### Process Management Issues
-- Check PM2 status: `pm2 status`
-- View logs: `pm2 logs weather-station`
-- Restart PM2 daemon: `pm2 kill && pm2 resurrect`
+**Do not use other GPIO pins** - conflicts may occur with other services running on the Pi.
