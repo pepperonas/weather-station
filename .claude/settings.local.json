@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(FORCE_PI=1 pip install Adafruit-DHT==1.4.0)",
+      "Bash(sudo cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(pm2 start:*)",
+      "Bash(pm2 save:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(pm2 stop:*)",
+      "Bash(sudo:*)",
+      "Bash(pm2 delete:*)",
+      "Bash(journalctl:*)",
+      "Bash(pm2 kill:*)",
+      "Bash(pm2 status:*)",
+      "Bash(i2cdetect:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(./venv/bin/python:*)",
+      "Bash(timeout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": []
+  }
+}
