@@ -24,53 +24,38 @@ A Python-based weather station for Raspberry Pi combining M5Stack ENV III (indoo
 ```
     Raspberry Pi 3B
     ┌──────────────┐
-    │              │         M5Stack ENV III (Indoor)
-    │              │         ┌──────────────────────┐
-    │    SDA (I2C) ●─────────┤ SDA                  │
-    │   GPIO 2     │         │                      │
-    │   (Pin 3)    │         │  SHT30  (0x44) Temp/Hum
-    │              │         │  QMP6988 (0x70) Pressure
-    │    SCL (I2C) ●─────────┤ SCL                  │
-    │   GPIO 3     │         │                      │
-    │   (Pin 5)    │         │                      │
-    │              │         │                      │
-    │      3.3V ●──┼─────────┤ VCC                  │
-    │   (Pin 1)    │         │                      │
-    │              │         │                      │
-    │      GND ●───┼─────────┤ GND                  │
-    │   (Pin 9)    │         └──────────────────────┘
-    │              │
-    │              │         DHT22 Sensor (Outdoor)
-    │              │         ┌──────────────────────┐
-    │   GPIO 18 ●──┼─────────┤ DATA                 │
-    │   (Pin 12)   │         │                      │
-    │              │    ┌────┤ VCC ◄── 3.3V         │
-    │      3.3V ●──┼────┘    │                      │
-    │   (Pin 17)   │         │                      │
-    │              │    ┌────┤ GND                   │
-    │      GND ●───┼────┘    └──────────────────────┘
-    │   (Pin 14)   │
+    │              │              M5Stack ENV III (Indoor)
+    │              │              ┌──────────────────────┐
+    │   SDA   (3) ─┼──────────────┤── SDA                │
+    │   GPIO 2     │              │                      │
+    │   SCL   (5) ─┼──────────────┤── SCL   SHT30  0x44 │
+    │   GPIO 3     │              │         QMP6988 0x70 │
+    │  3.3V   (1) ─┼──────────────┤── VCC                │
+    │              │         ┌────┤── GND                │
+    │   GND   (9) ─┼─────────┤    └──────────────────────┘
+    │              │         │
+    │              │         │    DHT22 Sensor (Outdoor)
+    │              │         │    ┌──────────────────────┐
+    │  GPIO18(12) ─┼─────────┼────┤── DATA  ──┐          │
+    │              │         │    │          [10kΩ]      │
+    │  3.3V  (17) ─┼─────────┼────┤── VCC   ──┘          │
+    │              │         │    │                      │
+    │   GND  (14) ─┼─────────┴────┤── GND                │
+    │              │              └──────────────────────┘
     └──────────────┘
-                         ┌─────────────────────────┐
-                         │  10kΩ Pull-up Resistor   │
-                         │  between DATA and VCC    │
-                         └─────────────────────────┘
 
-    Pin Mapping:
-    ┌──────────┬──────────┬─────────────────────────────────┐
-    │ Pi Pin   │ GPIO     │ Connection                      │
-    ├──────────┼──────────┼─────────────────────────────────┤
-    │ Pin 3    │ GPIO 2   │ I2C SDA → ENV III SDA           │
-    │ Pin 5    │ GPIO 3   │ I2C SCL → ENV III SCL           │
-    │ Pin 12   │ GPIO 18  │ DHT22 DATA                      │
+    ┌──────────┬──────────┬──────────────────────────────────┐
+    │ Pi Pin   │ GPIO     │ Connection                       │
+    ├──────────┼──────────┼──────────────────────────────────┤
+    │ Pin 3    │ GPIO 2   │ I2C SDA → ENV III               │
+    │ Pin 5    │ GPIO 3   │ I2C SCL → ENV III               │
+    │ Pin 12   │ GPIO 18  │ DHT22 DATA (10kΩ pull-up)       │
     │ Pin 1/17 │ 3.3V     │ Sensor power                    │
     │ Pin 9/14 │ GND      │ Common ground                   │
-    └──────────┴──────────┴─────────────────────────────────┘
-
-    I2C Addresses: SHT30 = 0x44, QMP6988 = 0x70
+    └──────────┴──────────┴──────────────────────────────────┘
 ```
 
-> **Note:** Enable I2C via `raspi-config`. The DHT22 requires a 10kΩ pull-up resistor between DATA and VCC. Add `dtoverlay=dht22,gpiopin=18` to `/boot/firmware/config.txt`.
+> **Note:** Enable I2C via `raspi-config`. The DHT22 needs a 10kΩ pull-up resistor between DATA and VCC. Add `dtoverlay=dht22,gpiopin=18` to `/boot/firmware/config.txt`.
 
 ## Quick Start
 
