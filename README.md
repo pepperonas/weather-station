@@ -36,7 +36,7 @@ A Python-based weather station for Raspberry Pi combining M5Stack ENV III (indoo
     │              │         │
     │              │         │    DHT22 Sensor (Outdoor)
     │              │         │    ┌──────────────────────┐
-    │  GPIO18(12) ─┼─────────┼────┤── DATA  ──┐          │
+    │  GPIO24(18) ─┼─────────┼────┤── DATA  ──┐          │
     │              │         │    │          [10kΩ]      │
     │  3.3V  (17) ─┼─────────┼────┤── VCC   ──┘          │
     │              │         │    │                      │
@@ -49,13 +49,13 @@ A Python-based weather station for Raspberry Pi combining M5Stack ENV III (indoo
     ├──────────┼──────────┼──────────────────────────────────┤
     │ Pin 3    │ GPIO 2   │ I2C SDA → ENV III               │
     │ Pin 5    │ GPIO 3   │ I2C SCL → ENV III               │
-    │ Pin 12   │ GPIO 18  │ DHT22 DATA (10kΩ pull-up)       │
+    │ Pin 18   │ GPIO 24  │ DHT22 DATA (10kΩ pull-up)       │
     │ Pin 1/17 │ 3.3V     │ Sensor power                    │
     │ Pin 9/14 │ GND      │ Common ground                   │
     └──────────┴──────────┴──────────────────────────────────┘
 ```
 
-> **Note:** Enable I2C via `raspi-config`. The DHT22 needs a 10kΩ pull-up resistor between DATA and VCC. Add `dtoverlay=dht22,gpiopin=18` to `/boot/firmware/config.txt`.
+> **Note:** Enable I2C via `raspi-config`. The DHT22 is on **GPIO24 (Pin 18), powered from 5 V**, and needs a 10kΩ pull-up resistor between DATA and VCC. Add `dtoverlay=dht22,gpiopin=24` to `/boot/firmware/config.txt`.
 
 ## Quick Start
 
@@ -80,7 +80,7 @@ python env3_dht22_combined.py
 |--------|-----------|---------|-------------|
 | SHT30 (ENV III) | I2C | 0x44 | Temperature, humidity (indoor) |
 | QMP6988 (ENV III) | I2C | 0x70 | Barometric pressure (indoor) |
-| DHT22 | GPIO 18 | — | Temperature, humidity (outdoor) |
+| DHT22 | GPIO 24 | — | Temperature, humidity (outdoor) |
 
 ## Tech Stack
 

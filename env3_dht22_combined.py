@@ -11,7 +11,7 @@ SHT30_ADDR = 0x44
 QMP6988_ADDR = 0x70
 
 # DHT22 Configuration (Outdoor sensor)
-DHT22_GPIO = 4  # GPIO4 (Pin 7)
+DHT22_GPIO = 24  # GPIO24 (Pin 18) - with 5V power!
 
 # DHT22 cached values and timing
 last_dht22_temp = None
@@ -104,58 +104,58 @@ def read_dht22_simple():
         (current_time - last_dht22_read_time) < DHT22_CACHE_DURATION):
         return last_dht22_temp, last_dht22_humidity
     
-    # Try to read fresh data with multiple attempts
-    max_attempts = 3
+    # Try to read fresh data with multiple attempts and different methods
+    max_attempts = 2
     for attempt in range(max_attempts):
         try:
-            result = subprocess.run(
-                ['/home/pi/apps/weather-station/venv/bin/python', '-c',
-                 f'''
-import time
-import board
-import adafruit_dht
-
-attempt_count = 3
-for i in range(attempt_count):
-    try:
-        dht = adafruit_dht.DHT22(board.D{DHT22_GPIO}, use_pulseio=False)
-        time.sleep(2.5)  # Increased delay for sensor stability
-        temp = dht.temperature
-        hum = dht.humidity
-        if temp is not None and hum is not None:
-            print(f"{{temp}},{{hum}}")
-            dht.exit()
-            break
-        dht.exit()
-    except Exception:
-        if i < attempt_count - 1:
-            time.sleep(2)  # Wait before retry
-        pass
-'''],
-                capture_output=True,
-                text=True,
-                timeout=15  # Increased timeout for multiple attempts
-            )
+            # Try direct library access first (faster)
+            import board
+            import adafruit_dht
             
-            if result.stdout.strip():
-                temp, hum = result.stdout.strip().split(',')
-                temp = float(temp)
-                hum = float(hum)
-                # Update cache with successful read
-                last_dht22_temp = temp
-                last_dht22_humidity = hum
-                last_dht22_read_time = current_time
-                return temp, hum
-                
+            # Try without use_pulseio first, then with it
+            pulseio_options = [None, False, True] if attempt == 0 else [False]
+            
+            for use_pulseio in pulseio_options:
+                try:
+                    if use_pulseio is None:
+                        dht = adafruit_dht.DHT22(board.D24)
+                    else:
+                        dht = adafruit_dht.DHT22(board.D24, use_pulseio=use_pulseio)
+                    
+                    time.sleep(3)  # DHT22 needs at least 2.5-3 seconds
+                    temp = dht.temperature
+                    hum = dht.humidity
+                    dht.exit()
+                    
+                    if temp is not None and hum is not None:
+                        # Update cache with successful read
+                        last_dht22_temp = temp
+                        last_dht22_humidity = hum
+                        last_dht22_read_time = current_time
+                        return temp, hum
+                        
+                except Exception as e:
+                    try:
+                        dht.exit()
+                    except:
+                        pass
+                    if "not found" in str(e):
+                        break  # Don't try other pulseio options if sensor not found
+                    continue
+            
         except Exception as e:
             if attempt == max_attempts - 1:
-                print(f"DHT22 subprocess error after {max_attempts} attempts: {e}")
+                # Log the specific error only on final attempt
+                if "not found" in str(e).lower():
+                    print(f"DHT22 sensor not detected on GPIO{DHT22_GPIO} - check wiring")
+                else:
+                    print(f"DHT22 error after {max_attempts} attempts: {e}")
         
         # Wait before next attempt
         if attempt < max_attempts - 1:
             time.sleep(3)
     
-    # Return None if no reading possible (don't return stale cached values)
+    # Return None if no reading possible
     return None, None
 
 def send_data(indoor_temp, indoor_humidity, pressure, outdoor_temp, outdoor_humidity):
@@ -228,7 +228,7 @@ def main():
     print(f"Server: {SERVER_URL}")
     print(f"Interval: {INTERVAL} seconds")
     print(f"Indoor Sensor - ENV III: SHT30 addr={hex(SHT30_ADDR)}, QMP6988 addr={hex(QMP6988_ADDR)}")
-    print(f"Outdoor Sensor - DHT22: GPIO{DHT22_GPIO} (Pin 7)\n")
+    print(f"Outdoor Sensor - DHT22: GPIO{DHT22_GPIO} (Pin 18) - 5V power required!\n")
     
     # Test initial reading
     indoor_temp, indoor_hum = read_sht30()
