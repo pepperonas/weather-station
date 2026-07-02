@@ -2,11 +2,17 @@
 
 <div align="center">
 
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Raspberry%20Pi-C51A4A.svg?logo=raspberrypi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Raspberry%20Pi-C51A4A?logo=raspberrypi&logoColor=white)
+![Sensors](https://img.shields.io/badge/Sensors-ENV%20III%20%2B%20DHT22-orange?logo=arduino&logoColor=white)
+![I2C](https://img.shields.io/badge/Bus-I2C%20%28smbus2%29-blue)
+![Service](https://img.shields.io/badge/Service-systemd-informational?logo=linux&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-55%20passing-brightgreen?logo=pytest&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
+![Made with love](https://img.shields.io/badge/Made%20with-%E2%9D%A4%EF%B8%8F-red)
 
-A Python-based weather station for Raspberry Pi combining M5Stack ENV III (indoor) and DHT22 (outdoor) sensors for temperature, humidity, and barometric pressure monitoring.
+A Python-based weather station for Raspberry Pi that combines an **M5Stack ENV III** (indoor, I2C) and a **DHT22** (outdoor, GPIO) sensor to collect temperature, humidity, and barometric pressure data and POST it to a remote monitoring server every 60 seconds.
 
 </div>
 
@@ -15,9 +21,12 @@ A Python-based weather station for Raspberry Pi combining M5Stack ENV III (indoo
 - **Dual Sensor Setup** — Indoor (M5 ENV III via I2C) and outdoor (DHT22 via GPIO) measurements
 - **Temperature & Humidity** — Real-time readings from both sensors
 - **Barometric Pressure** — Atmospheric pressure tracking via ENV III (QMP6988)
-- **Data Logging** — Continuous sensor data collection with timestamps
-- **Remote Reporting** — Sends data to a central monitoring server
-- **Robust Error Handling** — Automatic sensor recovery and retry logic
+- **CRC Validation** — SHT30 data integrity verified with CRC-8/MAXIM on every read
+- **Sensor Caching** — Stale sensor values re-used for up to 5 minutes on transient failures
+- **Data Logging** — Continuous sensor data collection with Unix timestamps
+- **Remote Reporting** — Sends JSON payload to a central monitoring server via HTTP POST
+- **Robust Error Handling** — Automatic I2C bus reset, per-sensor retry logic, and graceful degradation
+- **systemd Service** — Runs as a supervised system service (`weather-station.service`)
 
 ## Wiring Diagram
 
@@ -74,6 +83,18 @@ pip install -r requirements.txt
 python env3_dht22_combined.py
 ```
 
+## Run as a systemd Service
+
+```bash
+# Copy and enable the service
+sudo cp weather-station.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now weather-station
+
+# Check logs
+sudo journalctl -u weather-station -f
+```
+
 ## Sensors
 
 | Sensor | Interface | Address | Measurements |
@@ -82,12 +103,56 @@ python env3_dht22_combined.py
 | QMP6988 (ENV III) | I2C | 0x70 | Barometric pressure (indoor) |
 | DHT22 | GPIO 24 | — | Temperature, humidity (outdoor) |
 
+## Data Payload
+
+Each 60-second cycle POSTs a JSON object to the configured `SERVER_URL`:
+
+```json
+{
+  "timestamp": 1717000000,
+  "temperature": 22.1,
+  "humidity": 55.3,
+  "temperature_indoor": 22.1,
+  "humidity_indoor": 55.3,
+  "sensor_indoor": "ENV3",
+  "pressure": 1013.2,
+  "pressure_indoor": 1013.2,
+  "temperature_outdoor": 18.4,
+  "humidity_outdoor": 70.0,
+  "sensor_outdoor": "DHT22"
+}
+```
+
 ## Tech Stack
 
 - **Language** — Python 3.11
 - **Sensors** — M5Stack ENV III (SHT30 + QMP6988), DHT22
-- **Communication** — I2C (smbus2), GPIO (adafruit-circuitpython-dht)
-- **Process Manager** — PM2
+- **Communication** — I2C (`smbus2`), GPIO (`adafruit-circuitpython-dht`)
+- **Process Manager** — systemd
+- **Testing** — pytest
+
+## Tests
+
+Install dev dependencies and run the unit tests — no hardware required:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+The test suite (55 tests) covers pure weather-calculation logic:
+
+- **CRC-8/MAXIM** — the checksum algorithm used by the SHT30 sensor, including the datasheet example vector
+- **Temperature conversions** — °C ↔ °F (freezing, boiling, −40 identity point, body temperature, round-trip)
+- **Pressure conversions** — hPa ↔ inHg (standard atmosphere, round-trip)
+- **Wind-speed conversions** — m/s ↔ km/h (zero, 10 m/s, Beaufort-8 gale, round-trip)
+- **Dew point** — Magnus formula (saturated air, dry air, typical indoor, sub-zero)
+- **Heat index** — Steadman formula (hot/humid, extreme RH, humidity-monotonicity)
+- **Wind chill** — Environment Canada formula (calm, strong wind, colder-temp monotonicity)
+- **Compass direction** — 16-point mapping (N/S/E/W, NE/SW/NW, NNW, 360° wrap)
+- **SHT30 raw-register conversion** — 16-bit → °C and %RH at min/max/midpoint
+- **Sensor sanity checks** — valid/invalid temperature and humidity ranges
+- **Payload assembly** — both sensors, indoor-only, outdoor-only, no sensors, rounding, pressure fields
 
 ## Author
 
