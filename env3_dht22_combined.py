@@ -40,6 +40,19 @@ def crc8(data):
                 crc = crc << 1
     return crc & 0xFF
 
+# --- throttled logging: keep a dead sensor from flooding the journal (2026-07) ---
+_plog_state = {}
+def plog(key, msg, every=3600):
+    now = time.monotonic()
+    last, count = _plog_state.get(key, (0.0, 0))
+    if last == 0.0 or now - last >= every:
+        extra = f' (x{count} unterdrueckt in {int((now-last)/60)}m)' if count else ''
+        print(msg + extra, flush=True)
+        _plog_state[key] = (now, 0)
+    else:
+        _plog_state[key] = (last, count + 1)
+
+
 def read_sht30():
     """Read SHT30 temperature and humidity sensor from ENV III (Indoor)"""
     try:
@@ -73,7 +86,7 @@ def read_sht30():
         
         return temperature, humidity
     except Exception as e:
-        print(f"ENV III SHT30 error: {e}")
+        plog("sht30", f"ENV III SHT30 error: {e}")
         return None, None
 
 def read_qmp6988():
@@ -89,7 +102,7 @@ def read_qmp6988():
         return 1013.25
         
     except Exception as e:
-        print(f"ENV III QMP6988 error: {e}")
+        plog("qmp6988", f"ENV III QMP6988 error: {e}")
         return None
 
 def read_dht22_simple():
@@ -149,7 +162,7 @@ def read_dht22_simple():
                 if "not found" in str(e).lower():
                     print(f"DHT22 sensor not detected on GPIO{DHT22_GPIO} - check wiring")
                 else:
-                    print(f"DHT22 error after {max_attempts} attempts: {e}")
+                    plog("dht22", f"DHT22 error after {max_attempts} attempts: {e}")
         
         # Wait before next attempt
         if attempt < max_attempts - 1:
@@ -194,7 +207,7 @@ def send_data(indoor_temp, indoor_humidity, pressure, outdoor_temp, outdoor_humi
         
         # Only send if we have at least one temperature reading
         if 'temperature' not in data:
-            print("✗ No sensor data available")
+            plog("nodata", "✗ No sensor data available")
             return False
         
         # Format output message
